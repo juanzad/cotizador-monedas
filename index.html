@@ -1,0 +1,590 @@
+<title>Cotizador de Cambios</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@500;600&display=swap">
+<style>
+  /* Layout: panel de dólar + spread arriba, acciones, luego grilla de monedas con compra/venta en $ y US$ */
+  :root{
+    --bg:#f3f2ee; --surface:#ffffff; --surface-2:#f7f6f2;
+    --ink:#1b1f27; --ink-soft:#5c6472; --line:#e2e0d8; --line-strong:#cfccc1;
+    --accent:#1b7a54; --accent-soft:#e3f1ea; --accent-ink:#115c3e;
+    --buy:#115c3e; --buy-soft:#e3f1ea; --sell:#9a6b12; --sell-soft:#f6edda;
+    --field:#fbfaf7; --field-focus:#ffffff;
+    --shadow:0 1px 2px rgba(20,24,30,.05),0 8px 24px rgba(20,24,30,.06);
+    --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+    --sans:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+    --serif:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#10131a; --surface:#181c25; --surface-2:#1e232e;
+    --ink:#e9e7e1; --ink-soft:#9aa2b1; --line:#2a303c; --line-strong:#3a414f;
+    --accent:#36b784; --accent-soft:#143027; --accent-ink:#5fd1a3;
+    --buy:#5fd1a3; --buy-soft:#143027; --sell:#d6a94a; --sell-soft:#2e2713;
+    --field:#12161e; --field-focus:#1b2029;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+    color-scheme:dark;
+  }}
+  :root[data-theme="dark"]{
+    --bg:#10131a; --surface:#181c25; --surface-2:#1e232e;
+    --ink:#e9e7e1; --ink-soft:#9aa2b1; --line:#2a303c; --line-strong:#3a414f;
+    --accent:#36b784; --accent-soft:#143027; --accent-ink:#5fd1a3;
+    --buy:#5fd1a3; --buy-soft:#143027; --sell:#d6a94a; --sell-soft:#2e2713;
+    --field:#12161e; --field-focus:#1b2029;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+    color-scheme:dark;
+  }
+
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.45;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1060px;margin:0 auto;padding-block:22px 48px;
+    padding-left:max(16px,env(safe-area-inset-left,0px));
+    padding-right:max(16px,env(safe-area-inset-right,0px));}
+
+  .eyebrow{font-family:var(--serif);font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink);font-weight:600}
+  h1{font-family:var(--serif);font-weight:600;font-size:clamp(22px,4.5vw,30px);margin:2px 0 18px;letter-spacing:-.01em;text-wrap:balance}
+
+  /* panel superior: dólar + spread */
+  .topcard{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
+    padding:16px 18px;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:18px 26px;align-items:flex-end}
+  .field{display:flex;flex-direction:column;gap:6px;min-width:0}
+  .field > label{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+  .field .sub{font-size:10.5px;color:var(--ink-soft);font-weight:400;text-transform:none;letter-spacing:0}
+  .in{display:flex;align-items:center;background:var(--field);border:1px solid var(--line-strong);border-radius:9px;overflow:hidden;transition:border-color .12s,background .12s}
+  .in:focus-within{border-color:var(--accent);background:var(--field-focus)}
+  .in .pfx,.in .sfx{color:var(--ink-soft);font-family:var(--mono);font-size:13px;padding:0 4px}
+  .in .pfx{padding-left:11px}.in .sfx{padding-right:11px}
+  .in input{border:0;background:transparent;color:var(--ink);font-family:var(--mono);font-size:15px;
+    padding:9px 8px;width:86px;outline:0;font-variant-numeric:tabular-nums;text-align:right}
+  .in.pct input{width:62px}
+  .in.buy{border-color:color-mix(in srgb,var(--buy) 45%,var(--line-strong))}
+  .in.sell{border-color:color-mix(in srgb,var(--sell) 45%,var(--line-strong))}
+  .spreadgroup{display:flex;gap:14px;align-items:flex-end}
+  .divider{flex-basis:100%;height:0}
+
+  /* acciones + selectores */
+  .controls{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;margin-bottom:12px}
+  .btn-accent{appearance:none;border:0;background:var(--accent);color:#fff;font-family:var(--sans);
+    font-size:13px;font-weight:600;padding:9px 16px;border-radius:9px;cursor:pointer;transition:filter .12s;white-space:nowrap}
+  .btn-accent:hover{filter:brightness(1.06)} .btn-accent:disabled{opacity:.55;cursor:default}
+  .btn-ghost{appearance:none;background:transparent;border:1px solid var(--line-strong);color:var(--ink-soft);
+    font-family:var(--sans);font-size:13px;font-weight:600;padding:8px 14px;border-radius:9px;cursor:pointer;transition:all .12s}
+  .btn-ghost:hover{color:var(--ink);border-color:var(--ink-soft)}
+  .ctl{display:flex;align-items:center;gap:8px}
+  .ctl .lbl{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+  .seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:3px}
+  .seg button{appearance:none;border:0;background:transparent;color:var(--ink-soft);font-family:var(--sans);
+    font-size:13px;font-weight:600;padding:7px 13px;border-radius:7px;cursor:pointer;transition:all .12s}
+  .seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+  .seg.side button[aria-pressed="true"][data-v="compra"]{color:var(--buy)}
+  .seg.side button[aria-pressed="true"][data-v="venta"]{color:var(--sell)}
+  .spacer{flex:1}
+
+  .feedbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-bottom:14px}
+  .feedstatus{font-size:12px;color:var(--ink-soft);flex:1;min-width:180px;line-height:1.4}
+  .feedstatus.ok{color:var(--accent-ink)} .feedstatus.err{color:var(--sell)}
+  .feedstatus b{color:var(--ink);font-weight:600}
+  .attr{font-size:11px;color:var(--ink-soft);text-decoration:none;border-bottom:1px dotted var(--line-strong);white-space:nowrap}
+  .attr:hover{color:var(--ink)}
+  .feedstatus .live{color:var(--buy);font-weight:700}
+  .apibox{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:14px;box-shadow:var(--shadow)}
+  .apirow{display:flex;flex-direction:column;gap:7px}
+  .apirow label{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+  .apirow .sub{font-weight:400;text-transform:none;letter-spacing:0;color:var(--ink-soft)}
+  .apifield{display:flex;gap:8px;flex-wrap:wrap}
+  .apifield input{flex:1;min-width:160px;border:1px solid var(--line-strong);background:var(--field);color:var(--ink);
+    font-family:var(--mono);font-size:13px;padding:8px 11px;border-radius:9px;outline:0}
+  .apifield input:focus{border-color:var(--accent);background:var(--field-focus)}
+  .apihint{font-size:11.5px;color:var(--ink-soft);line-height:1.55;margin-top:10px}
+  .apihint b{color:var(--ink);font-weight:600}
+
+  .grand{display:flex;flex-direction:column;gap:9px;
+    border-radius:13px;padding:15px 20px;margin-bottom:16px;
+    background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent)}
+  .grand-top{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:10px}
+  .grand .gl{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink);font-weight:700}
+  .grand .gv{font-family:var(--mono);font-size:clamp(21px,5vw,29px);font-weight:600;color:var(--accent-ink);
+    font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .grand .gv .cur{font-size:.6em;color:var(--ink-soft);margin-right:6px;font-weight:500}
+  .grand-desc{font-size:13px;color:var(--accent-ink);line-height:1.6}
+  .grand-desc .verb{font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:11.5px}
+  .grand-desc b{font-weight:600} .grand-desc .amt{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .grand-desc .muted{color:var(--ink-soft)}
+
+  .tablecard{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+  .tablescroll{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;min-width:740px}
+  thead th{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-soft);font-weight:700;
+    text-align:right;padding:12px 14px;border-bottom:1px solid var(--line-strong);white-space:nowrap;background:var(--surface-2)}
+  thead th.lft{text-align:left}
+  thead th.buy{color:var(--buy)} thead th.sell{color:var(--sell)}
+  tbody td{padding:7px 12px;border-bottom:1px solid var(--line);text-align:right;vertical-align:middle}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:var(--surface-2)}
+  .cur-cell{text-align:left;white-space:nowrap}
+  .cur-code{font-family:var(--mono);font-weight:600;font-size:14px}
+  .cur-name{font-size:11px;color:var(--ink-soft);display:block;margin-top:1px}
+  .pair{font-family:var(--mono);font-size:10px;color:var(--ink-soft);background:var(--surface-2);
+    border:1px solid var(--line);border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle;font-weight:600}
+  .warnchip{font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--sell);background:var(--sell-soft);
+    border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle;font-weight:700;cursor:help}
+  .cellin{width:100%;max-width:112px;margin-left:auto;display:block;border:1px solid transparent;background:var(--field);
+    color:var(--ink);font-family:var(--mono);font-size:13.5px;text-align:right;padding:7px 9px;border-radius:7px;
+    outline:0;font-variant-numeric:tabular-nums;transition:border-color .12s,background .12s}
+  .cellin::placeholder{color:color-mix(in srgb,var(--ink-soft) 55%,transparent)}
+  .cellin:hover{border-color:var(--line-strong)}
+  .cellin:focus{border-color:var(--accent);background:var(--field-focus)}
+  .cellin.ref{background:transparent;color:var(--ink-soft);max-width:96px}
+  .cellin.ref:focus{color:var(--ink);background:var(--field-focus)}
+  .cellin.vol{background:var(--surface-2);border-color:var(--line)}
+  .cellin.vol:focus{border-color:var(--accent);background:var(--field-focus)}
+  .px{display:flex;flex-direction:column;gap:1px;align-items:flex-end;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .px-ars{font-family:var(--mono);font-size:13.5px;font-weight:600}
+  .px-usd{font-family:var(--mono);font-size:11px;color:var(--ink-soft)}
+  .px .cur{color:var(--ink-soft);font-weight:400;margin-right:2px}
+  .sidecell{display:flex;flex-direction:column;gap:3px;align-items:flex-end}
+  .pctrow{display:flex;align-items:center;gap:1px}
+  .pctin{width:48px;border:1px solid var(--line);background:var(--field);color:var(--ink-soft);
+    font-family:var(--mono);font-size:11px;text-align:right;padding:3px 5px;border-radius:5px;outline:0;font-variant-numeric:tabular-nums}
+  .pctin:focus{border-color:var(--accent);background:var(--field-focus);color:var(--ink)}
+  td.buycol .pctin:focus{border-color:var(--buy)} td.sellcol .pctin:focus{border-color:var(--sell)}
+  .pcts{font-family:var(--mono);font-size:10px;color:var(--ink-soft)}
+  td.buycol .px-ars{color:var(--buy)} td.sellcol .px-ars{color:var(--sell)}
+  td.buycol{background:color-mix(in srgb,var(--buy-soft) 45%,transparent)}
+  td.sellcol{background:color-mix(in srgb,var(--sell-soft) 45%,transparent)}
+  .total-out{font-family:var(--mono);font-size:14.5px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .total-out.zero{color:var(--ink-soft);font-weight:400}
+  .total-out .cur{font-size:.72em;color:var(--ink-soft);margin-right:4px;font-weight:400}
+
+  /* arbitraje */
+  .arbcard{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px 18px;margin-top:16px}
+  .arb-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+  .arb-title{font-weight:600;font-size:14px}
+  .btn-ghost.sm{padding:6px 11px;font-size:12px}
+  .arb-title .sub{font-weight:400;font-size:11px;color:var(--ink-soft);margin-left:4px}
+  .arb-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px}
+  .arb-ctrl{display:flex;gap:8px;flex-wrap:wrap}
+  select{appearance:none;font-family:var(--sans);font-size:14px;color:var(--ink);background:var(--field);
+    border:1px solid var(--line-strong);border-radius:9px;padding:9px 11px;outline:0;cursor:pointer;min-width:150px;max-width:100%}
+  select:focus{border-color:var(--accent)}
+  .arbamt{border:1px solid var(--line-strong);background:var(--field);color:var(--ink);font-family:var(--mono);
+    font-size:14px;text-align:right;padding:9px 11px;border-radius:9px;outline:0;width:130px;font-variant-numeric:tabular-nums}
+  .arbamt:focus{border-color:var(--accent);background:var(--field-focus)}
+  .arb-arrow{font-size:19px;color:var(--ink-soft);padding-bottom:7px}
+  .arb-out{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+  .arb-big{font-family:var(--mono);font-size:clamp(19px,4.3vw,25px);font-weight:600;color:var(--accent-ink);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .arb-sub{font-size:12px;color:var(--ink-soft);margin-top:6px;line-height:1.55}
+  .arb-sub b{color:var(--ink);font-weight:600}
+  .arb-sides{display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:13px}
+  .arb-peso{font-family:var(--mono);font-size:14px;color:var(--ink);margin-top:7px;font-variant-numeric:tabular-nums}
+  .arb-peso b{font-weight:600}
+
+  .footnote{font-size:11.5px;color:var(--ink-soft);margin-top:16px;line-height:1.6}
+  .footnote b{color:var(--ink);font-weight:600}
+
+  @media (max-width:560px){ .in input{width:80px} .topcard{gap:14px 20px} }
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">Mesa de cambios</div>
+  <h1>Cotizador de Cambios</h1>
+
+  <!-- DÓLAR + SPREAD -->
+  <div class="topcard">
+    <div class="field">
+      <label for="dolar">Dólar <span class="sub">pesos por 1 USD</span></label>
+      <div class="in"><span class="pfx">$</span><input id="dolar" inputmode="decimal" placeholder="0,00"></div>
+    </div>
+    <div class="spreadgroup">
+      <div class="field">
+        <label for="bulkDown">% Compra <span class="sub">aplicar a todas</span></label>
+        <div class="in pct buy"><input id="bulkDown" inputmode="decimal" placeholder="—"><span class="sfx">%</span></div>
+      </div>
+      <div class="field">
+        <label for="bulkUp">% Venta <span class="sub">aplicar a todas</span></label>
+        <div class="in pct sell"><input id="bulkUp" inputmode="decimal" placeholder="—"><span class="sfx">%</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACCIONES + SELECTORES -->
+  <div class="controls">
+    <button class="btn-accent" id="btnUpdate" type="button">Actualizar referencia</button>
+    <button class="btn-ghost" id="btnReset" type="button">Limpiar tabla</button>
+    <div class="spacer"></div>
+    <div class="ctl"><span class="lbl">Cotizar en</span>
+      <div class="seg" id="segResult" role="group" aria-label="Moneda del total">
+        <button data-v="ARS" aria-pressed="true">Pesos</button>
+        <button data-v="USD" aria-pressed="false">Dólares</button>
+      </div>
+    </div>
+    <div class="ctl"><span class="lbl">Lado</span>
+      <div class="seg side" id="segSide" role="group" aria-label="Lado operado">
+        <button data-v="compra" aria-pressed="false">Compra</button>
+        <button data-v="venta" aria-pressed="true">Venta</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="feedbar">
+    <span class="feedstatus" id="feedStatus">Actualiza sola al abrir. Tocá “Actualizar” para refrescar durante el día (Bolivia queda a mano).</span>
+    <button class="btn-ghost sm" id="btnApiToggle" type="button">Tiempo real ▾</button>
+    <a class="attr" href="https://www.exchangerate-api.com" target="_blank" rel="noopener">Tasas: exchangerate-api.com</a>
+  </div>
+  <div class="apibox" id="apiBox" hidden>
+    <div class="apirow">
+      <label for="tdKey">Clave Twelve Data <span class="sub">queda solo en este dispositivo</span></label>
+      <div class="apifield">
+        <input id="tdKey" type="password" autocomplete="off" spellcheck="false" placeholder="pegá tu API key acá">
+        <button class="btn-accent sm" id="btnKeySave" type="button">Guardar</button>
+        <button class="btn-ghost sm" id="btnKeyClear" type="button">Quitar</button>
+      </div>
+    </div>
+    <div class="apihint" id="apiHint">Con la clave cargada, los majors (EUR, GBP, JPY, CHF, CAD, AUD) más real y peso mexicano se traen en vivo. El resto sigue con el feed diario. Habilitá <b>api.twelvedata.com</b> en Configuración → Capacidades.</div>
+  </div>
+
+  <!-- ARBITRAJE -->
+  <div class="arbcard">
+    <div class="arb-head">
+      <div class="arb-title">Arbitraje entre monedas <span class="sub">cruza vía USD, con los spreads de cada una</span></div>
+      <button class="btn-ghost sm" id="btnArbClear" type="button">Limpiar</button>
+    </div>
+    <div class="arb-row">
+      <div class="field">
+        <label for="arbA">Entregás / tenés</label>
+        <div class="arb-ctrl"><select id="arbA"></select><input id="arbAmt" class="arbamt" inputmode="decimal" placeholder="0"></div>
+      </div>
+      <div class="arb-arrow">→</div>
+      <div class="field">
+        <label for="arbB">Recibís / querés</label>
+        <select id="arbB"></select>
+      </div>
+    </div>
+    <div class="arb-sides">
+      <div class="ctl"><span class="lbl">Entregás</span>
+        <div class="seg side" id="arbSideA" role="group" aria-label="Lado de la que entregás">
+          <button data-v="compra" aria-pressed="true">Compra</button>
+          <button data-v="venta" aria-pressed="false">Venta</button>
+        </div>
+      </div>
+      <div class="ctl"><span class="lbl">Recibís</span>
+        <div class="seg side" id="arbSideB" role="group" aria-label="Lado de la que recibís">
+          <button data-v="compra" aria-pressed="false">Compra</button>
+          <button data-v="venta" aria-pressed="true">Venta</button>
+        </div>
+      </div>
+    </div>
+    <div class="arb-out">
+      <div class="arb-big" id="arbBig">—</div>
+      <div class="arb-peso" id="arbPeso"></div>
+      <div class="arb-sub" id="arbSub"></div>
+    </div>
+  </div>
+
+  <!-- GRAN TOTAL -->
+  <div class="grand">
+    <div class="grand-top">
+      <span class="gl">Total de la operación</span>
+      <span class="gv" id="grandTotal"><span class="cur">$</span>0,00</span>
+    </div>
+    <div class="grand-desc" id="grandDesc"></div>
+  </div>
+
+  <!-- TABLA -->
+  <div class="tablecard">
+    <div class="tablescroll">
+      <table>
+        <thead>
+          <tr>
+            <th class="lft">Moneda</th>
+            <th>Referencia</th>
+            <th class="buy">Compra ($ / US$)</th>
+            <th class="sell">Venta ($ / US$)</th>
+            <th>Volumen</th>
+            <th>Total <span id="thCur" style="font-weight:400;text-transform:none;letter-spacing:0">(ARS)</span></th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="footnote">
+    <b>Cómo arma los precios.</b> Cada moneda tiene su propio % de compra y venta (los campos chicos dentro de cada celda). Compra = referencia − % compra · Venta = referencia + % venta. El precio se muestra en <b>pesos</b> (usando el dólar de arriba) y en <b>dólares</b> (por 1 unidad). Los dos campos de arriba aplican un % a todas de una.<br>
+    <b>Total por fila:</b> volumen × precio del lado elegido (Compra o Venta), en pesos o dólares según el selector. El gran total suma todas las filas.<br>
+    <b>Orientación:</b> euro, libra y aussie van como XXX/USD (ej. EUR/USD&nbsp;1,12); el resto como USD/XXX. Bolivia no se actualiza con el feed: cargá la referencia a mano.
+  </p>
+</div>
+
+<script>
+  // ref en orientación de pantalla. q:"usd" => USD/XXX (unidades por USD) ; q:"cur" => XXX/USD (USD por unidad)
+  const CURRENCIES = [
+    {code:"EUR", name:"Euro",                  ref:1.1217,  q:"cur", pd:"3",  pu:"3", live:true},
+    // limítrofes
+    {code:"BRL", name:"Real brasileño",        ref:5.0428,  q:"usd", pd:"7",  pu:"5", live:true},
+    {code:"UYU", name:"Peso uruguayo",         ref:40.1664, q:"usd", pd:"5",  pu:"2"},
+    {code:"PYG", name:"Guaraní paraguayo",     ref:5741.85, q:"usd", pd:"10", pu:"2"},
+    {code:"CLP", name:"Peso chileno",          ref:981.06,  q:"usd", pd:"7",  pu:"2"},
+    {code:"BOB", name:"Boliviano",             ref:11.74,   q:"usd", pd:"10", pu:"5", warn:"Tasa oficial; verificá el valor real con tu corredor y cargalo a mano. El feed no la actualiza."},
+    // otras latinoamericanas
+    {code:"COP", name:"Peso colombiano",       ref:3183.99, q:"usd", pd:"10", pu:"2"},
+    {code:"PEN", name:"Sol peruano",           ref:3.4409,  q:"usd", pd:"10", pu:"5"},
+    {code:"MXN", name:"Peso mexicano",         ref:18.6535, q:"usd", pd:"10", pu:"2", live:true},
+    // resto
+    {code:"GBP", name:"Libra esterlina",       ref:1.3393,  q:"cur", pd:"10", pu:"5", live:true},
+    {code:"CHF", name:"Franco suizo",          ref:0.8213,  q:"usd", pd:"10", pu:"2", live:true},
+    {code:"JPY", name:"Yen japonés",           ref:156.92,  q:"usd", pd:"10", pu:"2", live:true},
+    {code:"CNY", name:"Yuan chino",            ref:6.6882,  q:"usd", pd:"2",  pu:"2"},
+    {code:"CAD", name:"Dólar canadiense",      ref:1.4014,  q:"usd", pd:"12", pu:"2", live:true},
+    {code:"AUD", name:"Dólar australiano",     ref:0.7016,  q:"cur", pd:"10", pu:"2", live:true},
+    {code:"NZD", name:"Dólar neozelandés",     ref:0.5683,  q:"cur", pd:"10", pu:"2"},
+    // metales (a mano: el feed no trae oro)
+    {code:"XAU", name:"Oro · onza troy",       ref:4015.47, q:"cur", pd:"10", pu:"0", warn:"El feed no trae oro. Cargá la referencia (USD por onza) a mano."},
+  ];
+  const CUR_Q={}; CURRENCIES.forEach(c=>CUR_Q[c.code]=c.q);
+  function pairLabel(c){ return c.q==="cur" ? c.code+"/USD" : "USD/"+c.code; }
+  const CUR_SYM={ARS:"$", USD:"US$"};
+
+  const state={ result:"ARS", side:"venta", dolar:"1560", arbA:"NZD", arbB:"CNY", arbAmt:"1000", arbSideA:"compra", arbSideB:"venta", rows:{} };
+  CURRENCIES.forEach(c=>{ state.rows[c.code]={ref:String(c.ref), pctDown:c.pd||"2", pctUp:c.pu||"2", vol:""}; });
+
+  // persistencia por-visor
+  const LS="cotizador_v4";
+  try{const s=localStorage.getItem(LS); if(s){const d=JSON.parse(s);
+    if(d&&typeof d==="object"){ Object.assign(state,{result:d.result||state.result, side:d.side||state.side,
+      dolar:d.dolar??state.dolar, arbA:d.arbA||state.arbA, arbB:d.arbB||state.arbB, arbAmt:d.arbAmt??state.arbAmt,
+      arbSideA:d.arbSideA||state.arbSideA, arbSideB:d.arbSideB||state.arbSideB});
+      if(d.rows) for(const k in state.rows) if(d.rows[k]) Object.assign(state.rows[k], d.rows[k]); }
+  }}catch(e){}
+  function save(){ try{localStorage.setItem(LS, JSON.stringify(state));}catch(e){} }
+
+  function num(v){ if(v==null) return NaN; let s=String(v).trim(); if(!s) return NaN; s=s.replace(/\s/g,"");
+    if(s.includes(",")&&s.includes(".")) s=s.replace(/\./g,"").replace(",",".");
+    else if(s.includes(",")) s=s.replace(",",".");
+    const n=parseFloat(s); return isFinite(n)?n:NaN; }
+  function pct(s){ const n=num(s); return isFinite(n)?n:0; }
+  const nf2=new Intl.NumberFormat("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});
+  function money(n){ return isFinite(n)?nf2.format(n):"0,00"; }
+  const nfVol=new Intl.NumberFormat("es-AR",{maximumFractionDigits:2});
+  function volFmt(n){ return isFinite(n)?nfVol.format(n):""; }
+  function unit(n){ if(!isFinite(n)) return "—"; let d = n>=1000?2 : n>=1?4 : (n>=0.01?4:6);
+    return new Intl.NumberFormat("es-AR",{minimumFractionDigits:d,maximumFractionDigits:d}).format(n); }
+
+  // USD que vale 1 unidad (invariante)
+  function refUsd(code){ const v=num(state.rows[code].ref); if(!(isFinite(v)&&v>0)) return NaN;
+    return CUR_Q[code]==="cur" ? v : 1/v; }
+  function compraUsd(code){ const r=refUsd(code); return isFinite(r)? r*(1-pct(state.rows[code].pctDown)/100):NaN; }
+  function ventaUsd(code){ const r=refUsd(code); return isFinite(r)? r*(1+pct(state.rows[code].pctUp)/100):NaN; }
+
+  const tbody=document.getElementById("tbody");
+  function buildRows(){
+    tbody.innerHTML="";
+    CURRENCIES.forEach(c=>{
+      const r=state.rows[c.code];
+      const tr=document.createElement("tr"); tr.dataset.code=c.code;
+      tr.innerHTML=`
+        <td class="cur-cell">
+          <span class="cur-code">${c.code}</span><span class="pair">${pairLabel(c)}</span>${c.warn?`<span class="warnchip" title="${c.warn}">oficial</span>`:''}
+          <span class="cur-name">${c.name}</span>
+        </td>
+        <td><input class="cellin ref" inputmode="decimal" data-code="${c.code}" data-f="ref" value="${r.ref}"></td>
+        <td class="buycol"><div class="sidecell">
+          <div class="pctrow"><input class="pctin" inputmode="decimal" data-code="${c.code}" data-f="pctDown" value="${r.pctDown}" aria-label="% compra ${c.code}"><span class="pcts">%</span></div>
+          <div class="px" data-px="compra-${c.code}"><span class="px-ars">—</span><span class="px-usd">—</span></div></div></td>
+        <td class="sellcol"><div class="sidecell">
+          <div class="pctrow"><input class="pctin" inputmode="decimal" data-code="${c.code}" data-f="pctUp" value="${r.pctUp}" aria-label="% venta ${c.code}"><span class="pcts">%</span></div>
+          <div class="px" data-px="venta-${c.code}"><span class="px-ars">—</span><span class="px-usd">—</span></div></div></td>
+        <td><input class="cellin vol" inputmode="decimal" data-code="${c.code}" data-f="vol" value="${r.vol}" placeholder="0"></td>
+        <td><span class="total-out zero" data-out="${c.code}"><span class="cur">${CUR_SYM[state.result]}</span>0,00</span></td>`;
+      tbody.appendChild(tr);
+    });
+    tbody.querySelectorAll("input.cellin, input.pctin").forEach(inp=>{
+      inp.addEventListener("input",()=>{ state.rows[inp.dataset.code][inp.dataset.f]=inp.value; recompute(); save(); });
+    });
+  }
+
+  function setPx(code,side,usd,ars){
+    const box=tbody.querySelector(`[data-px="${side}-${code}"]`); if(!box) return;
+    box.querySelector(".px-ars").innerHTML=`<span class="cur">$</span>${unit(ars)}`;
+    box.querySelector(".px-usd").innerHTML=`<span class="cur">US$</span>${unit(usd)}`;
+  }
+
+  function recompute(){
+    const d=num(state.dolar);
+    let grand=0, any=false; const items=[];
+    CURRENCIES.forEach(c=>{
+      const cU=compraUsd(c.code), vU=ventaUsd(c.code);
+      const cA=(isFinite(cU)&&isFinite(d))?cU*d:NaN, vA=(isFinite(vU)&&isFinite(d))?vU*d:NaN;
+      setPx(c.code,"compra",cU,cA);
+      setPx(c.code,"venta",vU,vA);
+      const vol=num(state.rows[c.code].vol);
+      const pxUsd=state.side==="compra"?cU:vU, pxArs=state.side==="compra"?cA:vA;
+      let tot=NaN;
+      if(isFinite(vol)) tot = state.result==="USD" ? (isFinite(pxUsd)?vol*pxUsd:NaN) : (isFinite(pxArs)?vol*pxArs:NaN);
+      const out=tbody.querySelector(`[data-out="${c.code}"]`);
+      if(isFinite(tot)){ out.classList.remove("zero"); out.innerHTML=`<span class="cur">${CUR_SYM[state.result]}</span>${money(tot)}`; grand+=tot; any=true; if(isFinite(vol)&&vol>0) items.push({code:c.code,vol,tot}); }
+      else{ out.classList.add("zero"); out.innerHTML=`<span class="cur">${CUR_SYM[state.result]}</span>0,00`; }
+    });
+    document.getElementById("grandTotal").innerHTML=`<span class="cur">${CUR_SYM[state.result]}</span>${any?money(grand):"0,00"}`;
+    document.getElementById("thCur").textContent=`(${state.result})`;
+    const desc=document.getElementById("grandDesc");
+    if(items.length){
+      const verb = state.side==="compra" ? "La casa está comprando" : "La casa está vendiendo";
+      const parts = items.map(it=>`<b>${volFmt(it.vol)} ${it.code}</b> por <span class="amt">${CUR_SYM[state.result]} ${money(it.tot)}</span>`);
+      desc.innerHTML = `<span class="verb">${verb}</span> &nbsp;${parts.join(" &nbsp;·&nbsp; ")}`;
+    } else {
+      desc.innerHTML = `<span class="muted">Cargá un volumen en la tabla para ver la operación.</span>`;
+    }
+    computeArb();
+  }
+
+  // inputs superiores
+  function wireInput(id,key){ const el=document.getElementById(id); el.value=state[key];
+    el.addEventListener("input",()=>{ state[key]=el.value; recompute(); save(); }); }
+  wireInput("dolar","dolar");
+  function wireBulk(id,field){ const el=document.getElementById(id);
+    el.addEventListener("input",()=>{ const v=el.value;
+      CURRENCIES.forEach(c=>{ state.rows[c.code][field]=v; });
+      tbody.querySelectorAll(`input.pctin[data-f="${field}"]`).forEach(i=>i.value=v);
+      recompute(); save(); }); }
+  wireBulk("bulkDown","pctDown"); wireBulk("bulkUp","pctUp");
+
+  function wireSeg(id,key){ const seg=document.getElementById(id);
+    seg.addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; state[key]=b.dataset.v;
+      [...seg.querySelectorAll("button")].forEach(x=>x.setAttribute("aria-pressed", x===b?"true":"false")); recompute(); save(); });
+    [...seg.querySelectorAll("button")].forEach(x=>x.setAttribute("aria-pressed", x.dataset.v===state[key]?"true":"false")); }
+  wireSeg("segResult","result"); wireSeg("segSide","side");
+
+  document.getElementById("btnReset").addEventListener("click",()=>{
+    CURRENCIES.forEach(c=>{ state.rows[c.code].vol=""; });
+    tbody.querySelectorAll('input[data-f="vol"]').forEach(i=>i.value="");
+    recompute(); save();
+  });
+  document.getElementById("btnArbClear").addEventListener("click",()=>{
+    state.arbAmt=""; const ae=document.getElementById("arbAmt"); if(ae) ae.value="";
+    computeArb(); save();
+  });
+
+  // feed: diario (ExchangeRate-API) + tiempo real opcional (Twelve Data)
+  const FEED_URL="https://open.er-api.com/v6/latest/USD";
+  const TD_URL="https://api.twelvedata.com/exchange_rate";
+  const btnU=document.getElementById("btnUpdate"), fst=document.getElementById("feedStatus");
+  function trimNum(v){ let d=v>=100?2:(v>=1?4:6); const f=Math.pow(10,d); return String(Math.round(v*f)/f); }
+
+  // clave Twelve Data: vive SOLO en este navegador, nunca en el código publicado
+  const TDLS="cotizador_tdkey";
+  function getKey(){ try{return localStorage.getItem(TDLS)||"";}catch(e){return "";} }
+  function setKey(k){ try{ if(k) localStorage.setItem(TDLS,k); else localStorage.removeItem(TDLS); }catch(e){} }
+  function tdSymbol(c){ return c.q==="cur" ? c.code+"/USD" : "USD/"+c.code; }
+
+  function applyRef(code,val){ state.rows[code].ref=trimNum(val);
+    const inp=tbody.querySelector(`input.ref[data-code="${code}"]`); if(inp) inp.value=state.rows[code].ref; }
+
+  async function fetchLive(key){
+    const live=CURRENCIES.filter(c=>c.live&&!c.warn);
+    const syms=live.map(tdSymbol).join(",");
+    const res=await fetch(`${TD_URL}?symbol=${encodeURIComponent(syms)}&apikey=${encodeURIComponent(key)}`,{cache:"no-store"});
+    if(!res.ok) throw new Error("conexión");
+    const data=await res.json();
+    if(data&&data.status==="error") throw new Error(data.message||"clave o límite");
+    const out={};
+    live.forEach(c=>{ const s=tdSymbol(c); let r=null;
+      if(data[s]&&typeof data[s].rate==="number") r=data[s].rate;
+      else if(data.symbol===s&&typeof data.rate==="number") r=data.rate;
+      if(r>0) out[c.code]=r; });
+    return out;
+  }
+
+  async function updateFeed(){
+    const label=btnU.textContent; btnU.disabled=true; btnU.textContent="Actualizando…";
+    fst.className="feedstatus"; fst.textContent="Consultando cotizaciones…";
+    const key=getKey();
+    try{
+      const res=await fetch(FEED_URL,{cache:"no-store"});
+      if(res.status===429) throw new Error("rate");
+      if(!res.ok) throw new Error("http");
+      const data=await res.json();
+      if(data.result!=="success"||!data.rates) throw new Error("shape");
+      let updated=0; const manual=[];
+      CURRENCIES.forEach(c=>{
+        if(c.warn){ manual.push(c.code); return; }
+        const raw=data.rates[c.code];
+        if(typeof raw!=="number"||!(raw>0)){ manual.push(c.code); return; }
+        applyRef(c.code, c.q==="cur"?(1/raw):raw); updated++;
+      });
+      let liveCount=0, liveErr="";
+      if(key){
+        try{ const live=await fetchLive(key);
+          Object.keys(live).forEach(code=>{ applyRef(code, live[code]); liveCount++; });
+        }catch(e){ liveErr=e.message; }
+      }
+      recompute(); save();
+      const when=data.time_last_update_utc?new Date(data.time_last_update_utc):new Date();
+      const hora=when.toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+      const ahora=new Date().toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"});
+      if(key&&liveCount>0){
+        fst.className="feedstatus ok";
+        fst.innerHTML=`<span class="live">${liveCount} en vivo</span> (Twelve Data · ${ahora} hs) · resto diario (${hora})`+(manual.length?` · a mano: <b>${manual.join(", ")}</b>`:"");
+      }else if(key&&liveErr){
+        fst.className="feedstatus err";
+        fst.innerHTML=`Diario actualizado (${hora}). El tiempo real falló: ${liveErr}. Revisá la clave y que <b>api.twelvedata.com</b> esté habilitado.`;
+      }else{
+        fst.className="feedstatus ok";
+        fst.innerHTML=`Referencia diaria · ${updated} monedas · ${hora} hs`+(manual.length?` · a mano: <b>${manual.join(", ")}</b>`:"")+(key?"":` · <span style="color:var(--ink-soft)">cargá tu clave para tiempo real</span>`);
+      }
+    }catch(err){
+      fst.className="feedstatus err";
+      fst.innerHTML = err.message==="rate"
+        ? "El feed está limitado por ahora (demasiadas consultas). Probá en ~20 min; mientras, cargá a mano."
+        : "No pude conectar con el feed. Agregá <b>open.er-api.com</b> en Configuración → Capacidades → dominios permitidos y reintentá.";
+    }finally{ btnU.disabled=false; btnU.textContent=label; }
+  }
+  btnU.addEventListener("click",updateFeed);
+
+  // UI de la clave
+  const apiBox=document.getElementById("apiBox"), tdKeyEl=document.getElementById("tdKey"), apiToggle=document.getElementById("btnApiToggle");
+  function reflectKey(){ apiToggle.textContent = getKey() ? "Tiempo real ●" : "Tiempo real ▾"; }
+  tdKeyEl.value=getKey(); reflectKey();
+  apiToggle.addEventListener("click",()=>{ apiBox.hidden=!apiBox.hidden; });
+  document.getElementById("btnKeySave").addEventListener("click",()=>{ setKey(tdKeyEl.value.trim()); reflectKey(); updateFeed(); });
+  document.getElementById("btnKeyClear").addEventListener("click",()=>{ setKey(""); tdKeyEl.value=""; reflectKey(); updateFeed(); });
+
+  // ---- arbitraje entre monedas (cruce vía USD con spreads) ----
+  function fillSelect(sel,val){
+    sel.innerHTML="";
+    const opts=[{code:"ARS",name:"Peso argentino"},{code:"USD",name:"Dólar estadounidense"}].concat(CURRENCIES.map(c=>({code:c.code,name:c.name})));
+    opts.forEach(o=>{ const op=document.createElement("option"); op.value=o.code; op.textContent=`${o.code} · ${o.name}`; sel.appendChild(op); });
+    sel.value=val;
+  }
+  const arbAsel=document.getElementById("arbA"), arbBsel=document.getElementById("arbB"), arbAmtEl=document.getElementById("arbAmt");
+  fillSelect(arbAsel,state.arbA); fillSelect(arbBsel,state.arbB); arbAmtEl.value=state.arbAmt;
+  arbAsel.addEventListener("change",()=>{ state.arbA=arbAsel.value; computeArb(); save(); });
+  arbBsel.addEventListener("change",()=>{ state.arbB=arbBsel.value; computeArb(); save(); });
+  arbAmtEl.addEventListener("input",()=>{ state.arbAmt=arbAmtEl.value; computeArb(); save(); });
+  wireSeg("arbSideA","arbSideA"); wireSeg("arbSideB","arbSideB");
+
+  function arsUsd(){ const d=num(state.dolar); return (isFinite(d)&&d>0)?1/d:NaN; }
+  function legUsd(code,side){ if(code==="USD") return 1; if(code==="ARS") return arsUsd(); return side==="compra"?compraUsd(code):ventaUsd(code); }
+  function refUsdAny(code){ if(code==="USD") return 1; if(code==="ARS") return arsUsd(); return refUsd(code); }
+  function legLabel(code,side){ return (code==="USD"||code==="ARS") ? code : `${side} ${code}`; }
+  function computeArb(){
+    const A=state.arbA, B=state.arbB, amt=num(state.arbAmt), d=num(state.dolar);
+    const sA=state.arbSideA, sB=state.arbSideB;
+    const big=document.getElementById("arbBig"), peso=document.getElementById("arbPeso"), sub=document.getElementById("arbSub");
+    const aU=legUsd(A,sA), bU=legUsd(B,sB);
+    if(!(isFinite(aU)&&aU>0&&isFinite(bU)&&bU>0)){ big.textContent="—"; peso.textContent=""; sub.textContent="Cargá referencias válidas en ambas monedas."; return; }
+    const cross=aU/bU;                        // unidades de B por 1 A
+    const rA=refUsdAny(A), rB=refUsdAny(B);
+    const refCross=(isFinite(rA)&&isFinite(rB)&&rB>0)?rA/rB:NaN;
+    big.textContent = isFinite(amt) ? `${unit(amt)} ${A}  =  ${unit(amt*cross)} ${B}` : `1 ${A} = ${unit(cross)} ${B}`;
+    if(isFinite(amt)){
+      const usdv=amt*aU, pesosv=isFinite(d)?usdv*d:NaN;
+      peso.innerHTML = `≈ <b>US$ ${unit(usdv)}</b>` + (isFinite(pesosv)?`  ·  <b>$ ${money(pesosv)}</b>`:`  ·  <span style="color:var(--sell)">cargá el dólar para ver pesos</span>`);
+    } else peso.textContent="";
+    sub.innerHTML = `1 ${A} = <b>${unit(cross)}</b> ${B} · vía USD (${legLabel(A,sA)} / ${legLabel(B,sB)})`
+      + (isFinite(refCross)?` · ref. media: 1 ${A} = ${unit(refCross)} ${B}`:"");
+  }
+
+  buildRows();
+  recompute();
+  // actualización automática al abrir
+  updateFeed();
+</script>
